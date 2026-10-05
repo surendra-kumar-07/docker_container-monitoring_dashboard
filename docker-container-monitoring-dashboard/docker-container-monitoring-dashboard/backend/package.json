@@ -1,0 +1,14 @@
+{
+  "name": "docker-container-monitoring-dashboard",
+  "version": "1.0.0",
+  "description": "Web dashboard for monitoring and managing Docker containers",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dockerode": "^4.0.9",
+    "express": "^5.1.0"
+  }
+}

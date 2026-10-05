@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DockerOps Dashboard</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0}
+header{background:#111827;border-bottom:1px solid #334155;padding:20px 30px;font-size:24px;font-weight:700}
+.container{max-width:1400px;margin:auto;padding:30px}.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:18px}
+.card,.section{background:#1e293b;border:1px solid #334155;border-radius:12px}.card{padding:20px}.label{color:#94a3b8;font-size:13px}.value{font-size:28px;font-weight:700;margin-top:8px}
+.section{margin-top:25px;overflow:hidden}.section h2{margin:0;padding:20px;border-bottom:1px solid #334155;font-size:18px}
+.section-head{display:flex;justify-content:space-between;align-items:center}.section-head h2{flex:1}
+table{width:100%;border-collapse:collapse}th,td{padding:14px;text-align:left;border-bottom:1px solid #334155;font-size:14px}th{color:#94a3b8;background:#172033}
+button{border:0;border-radius:6px;padding:7px 10px;margin:2px;color:#fff;cursor:pointer}.start{background:#16a34a}.stop{background:#dc2626}.restart{background:#f59e0b}.logs{background:#2563eb}.delete{background:#991b1b}.refresh{background:#0891b2}
+.running{color:#4ade80}.exited{color:#f87171}.images{padding:15px}.image{padding:12px;border-bottom:1px solid #334155}
+pre{margin:0;padding:20px;background:#020617;min-height:150px;max-height:450px;overflow:auto;color:#cbd5e1}
+@media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}.container{padding:15px}.section{overflow-x:auto}table{min-width:850px}}
+</style>
+</head>
+<body>
+<header>🐳 DockerOps Container Dashboard</header>
+<div class="container">
+<div class="cards">
+<div class="card"><div class="label">Total Containers</div><div id="total" class="value">0</div></div>
+<div class="card"><div class="label">Running</div><div id="running" class="value">0</div></div>
+<div class="card"><div class="label">Stopped</div><div id="stopped" class="value">0</div></div>
+<div class="card"><div class="label">Images</div><div id="images" class="value">0</div></div>
+<div class="card"><div class="label">Docker Version</div><div id="version" class="value" style="font-size:18px">-</div></div>
+</div>
+
+<div class="section">
+<div class="section-head"><h2>Containers</h2><button class="refresh" onclick="loadDashboard()">↻ Refresh</button></div>
+<table>
+<thead><tr><th>Name</th><th>Image</th><th>Status</th><th>CPU</th><th>Memory</th><th>Actions</th></tr></thead>
+<tbody id="containers"></tbody>
+</table>
+</div>
+
+<div class="section">
+<h2>Docker Images</h2>
+<div id="imageList" class="images"></div>
+</div>
+
+<div class="section">
+<h2>Container Logs</h2>
+<pre id="logs">Select a container and click Logs.</pre>
+</div>
+</div>
+
+<script>
+async function api(url, options={}) {
+  const r = await fetch(url, options);
+  if (!r.ok) {
+    const d = await r.json().catch(()=>({}));
+    throw new Error(d.error || "Request failed");
+  }
+  return r.json();
+}
+
+async function loadDashboard() {
+  try {
+    const info = await api("/api/info");
+    document.getElementById("total").textContent = info.containers;
+    document.getElementById("running").textContent = info.running;
+    document.getElementById("stopped").textContent = info.stopped;
+    document.getElementById("images").textContent = info.images;
+    document.getElementById("version").textContent = info.version;
+    await loadContainers();
+    await loadImages();
+  } catch(e) { console.error(e); }
+}
+
+async function loadContainers() {
+  const list = await api("/api/containers");
+  const tbody = document.getElementById("containers");
+  tbody.innerHTML = "";
+  list.forEach(c => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><b>${escapeHtml(c.name)}</b><br><small>${c.id}</small></td>
+      <td>${escapeHtml(c.image)}</td>
+      <td class="${c.state === "running" ? "running" : "exited"}">${c.state}</td>
+      <td id="cpu-${c.id}">-</td>
+      <td id="mem-${c.id}">-</td>
+      <td>
+        ${c.state === "running"
+          ? `<button class="stop" onclick="action('${c.id}','stop')">Stop</button>`
+          : `<button class="start" onclick="action('${c.id}','start')">Start</button>`}
+        <button class="restart" onclick="action('${c.id}','restart')">Restart</button>
+        <button class="logs" onclick="showLogs('${c.id}')">Logs</button>
+        <button class="delete" onclick="deleteContainer('${c.id}')">Delete</button>
+      </td>`;
+    tbody.appendChild(row);
+    if(c.state === "running") loadStats(c.id);
+  });
+}
+
+async function loadStats(id) {
+  try {
+    const s = await api(`/api/containers/${id}/stats`);
+    const cpu = document.getElementById(`cpu-${id}`);
+    const mem = document.getElementById(`mem-${id}`);
+    if(cpu) cpu.textContent = s.cpu + "%";
+    if(mem) mem.textContent = s.memory + "%";
+  } catch(e) {}
+}
+
+async function action(id, command) {
+  try {
+    await api(`/api/containers/${id}/${command}`, {method:"POST"});
+    await loadDashboard();
+  } catch(e) { alert(e.message); }
+}
+
+async function deleteContainer(id) {
+  if(!confirm("Delete this container?")) return;
+  try {
+    await api(`/api/containers/${id}`, {method:"DELETE"});
+    await loadDashboard();
+  } catch(e) { alert(e.message); }
+}
+
+async function showLogs(id) {
+  try {
+    const r = await fetch(`/api/containers/${id}/logs`);
+    document.getElementById("logs").textContent = await r.text();
+  } catch(e) { alert(e.message); }
+}
+
+async function loadImages() {
+  const images = await api("/api/images");
+  const list = document.getElementById("imageList");
+  list.innerHTML = "";
+  images.forEach(i => {
+    const div = document.createElement("div");
+    div.className = "image";
+    div.innerHTML = `<b>${escapeHtml(i.tags.join(", "))}</b><br><small>ID: ${i.id} | Size: ${i.size}</small>`;
+    list.appendChild(div);
+  });
+}
+
+function escapeHtml(v) {
+  return String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+
+loadDashboard();
+setInterval(loadDashboard, 10000);
+</script>
+</body>
+</html>
