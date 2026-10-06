@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chat</title>
+<style>
+ body{font-family:sans-serif;max-width:600px;margin:20px auto;padding:0 10px}
+ #log{border:1px solid #ccc;height:350px;overflow-y:auto;padding:8px;margin:10px 0}
+ .sys{color:#888;font-style:italic} input{padding:8px} #msg{width:65%}
+</style></head><body>
+<h2>Realtime Chat</h2>
+<div id="login"><input id="user" placeholder="username"> <input id="room" placeholder="room" value="general"> <button onclick="join()">Join</button></div>
+<div id="chat" style="display:none">
+ <div id="log"></div>
+ <input id="msg" placeholder="Type a message"> <button onclick="send()">Send</button>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+ // websocket-only transport: no sticky sessions needed behind the load balancer
+ const socket = io({ transports: ['websocket'] });
+ const log = document.getElementById('log');
+ const add = (t, cls) => { const d = document.createElement('div'); d.textContent = t; if (cls) d.className = cls; log.appendChild(d); log.scrollTop = log.scrollHeight; };
+ function join() {
+   const username = user.value.trim(), r = room.value.trim();
+   if (!username || !r) return;
+   socket.emit('join', { room: r, username });
+   login.style.display = 'none'; chat.style.display = 'block';
+ }
+ function send() { if (msg.value.trim()) { socket.emit('message', msg.value); msg.value = ''; } }
+ msg.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+ socket.on('history', rows => rows.forEach(m => add(`${m.username}: ${m.text}`)));
+ socket.on('message', m => add(`${m.username}: ${m.text}`));
+ socket.on('system', t => add(t, 'sys'));
+</script></body></html>

@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 10s
+scrape_configs:
+  - job_name: chat
+    dns_sd_configs:          # discovers every backend replica
+      - names: ['backend']
+        type: A
+        port: 3000
